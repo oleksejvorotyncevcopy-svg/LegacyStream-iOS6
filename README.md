@@ -53,4 +53,15 @@ The `com.vorotyntsev.musicplayer` package is built using Theos.
 2. **Fetching the Stream:** When you tap a track, the client hits `/track?id=Artist_Title`. The backend spins up `yt-dlp` using the `ytsearch1:` flag, which finds the most relevant YouTube video and extracts the direct `URL` to the `mp4` audio stream.
 3. **Proxying:** The client receives a local proxy link (e.g., `/proxy?vid=...`). When the client requests it, the Flask server streams the audio directly from YouTube to the iPhone, preserving original HTTP headers like `Content-Length` and `Accept-Ranges` to keep `AVPlayer` happy.
 
+## Disclaimer
+
+This project is for **educational and research purposes only**. It serves as a proof-of-concept for legacy protocol interoperability and audio streaming techniques on older hardware.
+
+* **No Affiliation:** This project is not affiliated with, endorsed by, or sponsored by Apple Inc., Google LLC, YouTube, or any other third-party service mentioned.
+* **User Responsibility:** The author is not responsible for how you use this software. Users are responsible for complying with the Terms of Service of any third-party APIs or platforms (e.g., YouTube, iTunes) used by this project.
+* **Copyright Content:** This software does not host, store, or distribute any copyrighted music files. It only provides a mechanism to stream and download content from public sources.
+* **As-Is Basis:** This software is provided "as-is" without warranty of any kind. The author assumes no liability for any damages or issues resulting from the use of this code.
+
+*If you are a copyright holder and have concerns regarding this project, please contact the developer via GitHub.*
+
 Happy Hacking! 
