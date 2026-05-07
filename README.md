@@ -35,7 +35,6 @@ The server acts as a bridge between your legacy device and the modern web.
    ```
    *By default, the server listens on port `8080` at `0.0.0.0`.*
 
-> **IMPORTANT:** In the client source code (`XXRootViewController.m`), the server IP address is currently hardcoded as `192.168.1.235:8080`. You **must** change this to the actual local IP address of your machine before building!
 
 ### 2. Frontend (Client)
 The `com.vorotyntsev.musicplayer` package is built using Theos.
