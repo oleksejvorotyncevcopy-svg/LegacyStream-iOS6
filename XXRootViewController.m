@@ -32,7 +32,7 @@
     [super viewDidLoad];
     
     self.view.backgroundColor = [UIColor colorWithPatternImage:[UIImage imageNamed:@"bg.png"]];
-    self.serverIP = @"192.168.1.235:8080"; 
+    self.serverIP = @"192.168.X.X:8080"; 
     
     [self loadLocalTracks];
 
