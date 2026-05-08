@@ -17,7 +17,7 @@
 @property (nonatomic, strong) UISlider *progressSlider;
 @property (nonatomic, strong) UIButton *playPauseButton;
 @property (nonatomic, strong) UIButton *downloadButton;
-@property (nonatomic, strong) UIButton *deleteButton; // НОВАЯ КНОПКА
+@property (nonatomic, strong) UIButton *deleteButton;
 @property (nonatomic, strong) UILabel *elapsedTimeLabel;
 @property (nonatomic, strong) UILabel *remainingTimeLabel;
 
@@ -30,19 +30,19 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    
     self.view.backgroundColor = [UIColor colorWithPatternImage:[UIImage imageNamed:@"bg.png"]];
+
     self.serverIP = @"192.168.X.X:8080"; 
     
     [self loadLocalTracks];
 
     self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 44)];
     self.searchBar.delegate = self;
-    self.searchBar.placeholder = @"Search in network...";
+    self.searchBar.placeholder = @"Search YouTube or Airsonic";
     self.searchBar.tintColor = [UIColor colorWithRed:0.20 green:0.15 blue:0.10 alpha:1.0];
     [self.view addSubview:self.searchBar];
 
-    self.modeControl = [[UISegmentedControl alloc] initWithItems:@[@"Search", @"Library"]];
+    self.modeControl = [[UISegmentedControl alloc] initWithItems:@[@"YouTube", @"Airsonic", @"Offline"]];
     self.modeControl.frame = CGRectMake(10, 50, self.view.bounds.size.width - 20, 30);
     self.modeControl.selectedSegmentIndex = 0;
     self.modeControl.tintColor = [UIColor colorWithRed:0.40 green:0.35 blue:0.30 alpha:1.0];
@@ -63,20 +63,14 @@
 }
 
 - (BOOL)canBecomeFirstResponder { return YES; }
-
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
     [self becomeFirstResponder];
 }
-
 - (void)remoteControlReceivedWithEvent:(UIEvent *)receivedEvent {
-    if (receivedEvent.type == UIEventTypeRemoteControl) {
-        if (receivedEvent.subtype == UIEventSubtypeRemoteControlPlay || 
-            receivedEvent.subtype == UIEventSubtypeRemoteControlPause || 
-            receivedEvent.subtype == UIEventSubtypeRemoteControlTogglePlayPause) {
-            [self playPauseTapped];
-        }
+    if (receivedEvent.type == UIEventTypeRemoteControl && receivedEvent.subtype == UIEventSubtypeRemoteControlTogglePlayPause) {
+        [self playPauseTapped];
     }
 }
 
@@ -108,7 +102,7 @@
     [self.deleteButton setTitle:@"✖" forState:UIControlStateNormal];
     [self.deleteButton setTitleColor:[UIColor colorWithRed:0.6 green:0.2 blue:0.2 alpha:1.0] forState:UIControlStateNormal];
     [self.deleteButton addTarget:self action:@selector(deleteCurrentTrack) forControlEvents:UIControlEventTouchUpInside];
-    self.deleteButton.hidden = YES; 
+    self.deleteButton.hidden = YES;
     [self.playerView addSubview:self.deleteButton];
 
     self.elapsedTimeLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 40, 45, 20)];
@@ -140,29 +134,21 @@
     [self.view addSubview:self.playerView];
 }
 
-
 - (void)deleteCurrentTrack {
     if (!self.currentTrackMetadata || !self.currentTrackMetadata[@"localPath"]) return;
-
     NSString *fileName = self.currentTrackMetadata[@"localPath"];
     NSString *filePath = [[self downloadsPath] stringByAppendingPathComponent:fileName];
-
     [[NSFileManager defaultManager] removeItemAtPath:filePath error:nil];
 
     NSDictionary *trackToRemove = nil;
     for (NSDictionary *t in self.localTracks) {
-        if ([t[@"id"] isEqualToString:self.currentTrackMetadata[@"id"]]) {
-            trackToRemove = t;
-            break;
-        }
+        if ([t[@"id"] isEqualToString:self.currentTrackMetadata[@"id"]]) { trackToRemove = t; break; }
     }
-
     if (trackToRemove) {
         [self.localTracks removeObject:trackToRemove];
         [self saveLocalTracks];
         [self.tableView reloadData];
     }
-
     [self.player pause];
     self.nowPlayingLabel.text = @"Track deleted";
     self.deleteButton.hidden = YES;
@@ -178,18 +164,25 @@
     NSDictionary *track = self.currentTrackMetadata;
     [self.downloadButton setTitle:@"..." forState:UIControlStateNormal];
     
+
+    NSInteger currentMode = self.modeControl.selectedSegmentIndex;
+    
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         NSString *encodedId = [track[@"id"] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
-        NSString *urlStr = [NSString stringWithFormat:@"http://%@/track?id=%@", self.serverIP, encodedId];
+
+        NSString *endpoint = (currentMode == 1) ? @"ss_track" : @"track";
+        NSString *urlStr = [NSString stringWithFormat:@"http://%@/%@?id=%@", self.serverIP, endpoint, encodedId];
+        
         NSData *jsonData = [NSData dataWithContentsOfURL:[NSURL URLWithString:urlStr]];
         if (jsonData) {
             NSDictionary *json = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
             NSData *audioData = [NSData dataWithContentsOfURL:[NSURL URLWithString:json[@"stream_url"]]];
             if (audioData) {
                 NSString *safeId = [track[@"id"] stringByReplacingOccurrencesOfString:@" " withString:@"_"];
+
+                NSString *extension = (currentMode == 1) ? @"mp3" : @"mp4";
+                NSString *fileName = [NSString stringWithFormat:@"%@.%@", safeId, extension];
                 
-                // ВАЖНО: сохраняем как MP4!
-                NSString *fileName = [NSString stringWithFormat:@"%@.mp4", safeId];
                 NSString *path = [[self downloadsPath] stringByAppendingPathComponent:fileName];
                 [audioData writeToFile:path atomically:YES];
                 
@@ -198,7 +191,7 @@
                     [local setObject:fileName forKey:@"localPath"];
                     [self.localTracks addObject:local];
                     [self saveLocalTracks];
-            
+                    
                     self.currentTrackMetadata = local;
                     self.downloadButton.hidden = YES;
                     self.deleteButton.hidden = NO;
@@ -208,7 +201,6 @@
         }
     });
 }
-
 
 - (void)playURL:(NSURL *)url title:(NSString *)title artist:(NSString *)artist {
     if (self.timeObserver) {
@@ -225,7 +217,6 @@
     self.player = [AVPlayer playerWithPlayerItem:item];
     
     self.nowPlayingLabel.text = title;
-
     NSMutableDictionary *info = [NSMutableDictionary dictionary];
     [info setObject:title forKey:MPMediaItemPropertyTitle];
     [info setObject:artist forKey:MPMediaItemPropertyArtist];
@@ -252,23 +243,26 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    NSDictionary *track = (self.modeControl.selectedSegmentIndex == 0) ? self.searchResults[indexPath.row] : self.localTracks[indexPath.row];
+
+    NSDictionary *track = (self.modeControl.selectedSegmentIndex == 2) ? self.localTracks[indexPath.row] : self.searchResults[indexPath.row];
     self.currentTrackMetadata = track;
 
     if (track[@"localPath"]) {
         self.downloadButton.hidden = YES;
         self.deleteButton.hidden = NO;
-        
         NSString *path = [[self downloadsPath] stringByAppendingPathComponent:track[@"localPath"]];
         [self playURL:[NSURL fileURLWithPath:path] title:track[@"title"] artist:track[@"artist"]];
     } else {
         self.downloadButton.hidden = NO;
         self.deleteButton.hidden = YES;
         [self.downloadButton setTitle:@"⬇" forState:UIControlStateNormal];
+        self.nowPlayingLabel.text = @"Loading...";
         
-        self.nowPlayingLabel.text = @"Загрузка...";
         NSString *encodedId = [track[@"id"] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
-        NSURL *u = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@/track?id=%@", self.serverIP, encodedId]];
+
+        NSString *endpoint = (self.modeControl.selectedSegmentIndex == 1) ? @"ss_track" : @"track";
+        NSURL *u = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@/%@?id=%@", self.serverIP, endpoint, encodedId]];
+        
         [NSURLConnection sendAsynchronousRequest:[NSURLRequest requestWithURL:u] queue:[NSOperationQueue mainQueue] completionHandler:^(NSURLResponse *r, NSData *d, NSError *e) {
             if (d) {
                 NSDictionary *j = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
@@ -278,33 +272,50 @@
     }
 }
 
+- (void)searchBarSearchButtonClicked:(UISearchBar *)sb {
+    [sb resignFirstResponder];
+    NSString *q = [sb.text stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+
+    NSString *endpoint = (self.modeControl.selectedSegmentIndex == 1) ? @"ss_search" : @"search";
+    NSURL *u = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@/%@?q=%@", self.serverIP, endpoint, q]];
+    
+    [NSURLConnection sendAsynchronousRequest:[NSURLRequest requestWithURL:u] queue:[NSOperationQueue mainQueue] completionHandler:^(NSURLResponse *r, NSData *d, NSError *e) {
+        if (d) { self.searchResults = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil]; [self.tableView reloadData]; }
+    }];
+}
+
+- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { 
+    return (self.modeControl.selectedSegmentIndex == 2) ? self.localTracks.count : self.searchResults.count; 
+}
+- (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
+    UITableViewCell *c = [tv dequeueReusableCellWithIdentifier:@"C"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"C"];
+    NSDictionary *t = (self.modeControl.selectedSegmentIndex == 2) ? self.localTracks[ip.row] : self.searchResults[ip.row];
+    c.textLabel.text = t[@"title"]; c.detailTextLabel.text = t[@"artist"];
+    c.backgroundColor = [UIColor clearColor]; c.textLabel.textColor = [UIColor whiteColor];
+    return c;
+}
+
 - (NSString *)downloadsPath { return [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0]; }
 - (void)loadLocalTracks { NSString *p = [[self downloadsPath] stringByAppendingPathComponent:@"library.plist"]; self.localTracks = [NSMutableArray arrayWithContentsOfFile:p] ?: [NSMutableArray array]; }
 - (void)saveLocalTracks { NSString *p = [[self downloadsPath] stringByAppendingPathComponent:@"library.plist"]; [self.localTracks writeToFile:p atomically:YES]; }
 
-- (void)modeChanged { [self.tableView reloadData]; self.searchBar.hidden = (self.modeControl.selectedSegmentIndex == 1); }
+- (void)modeChanged { 
+    [self.searchBar resignFirstResponder];
+    
+    if (self.modeControl.selectedSegmentIndex != 2) {
+        self.searchResults = @[]; 
+        self.searchBar.text = @""; 
+    }
+    
+    self.searchBar.hidden = (self.modeControl.selectedSegmentIndex == 2); 
+    [self.tableView reloadData]; 
+}
 - (void)playPauseTapped { 
     if (self.player.rate > 0) { [self.player pause]; [self.playPauseButton setTitle:@"▶" forState:UIControlStateNormal]; }
     else { [self.player play]; [self.playPauseButton setTitle:@"❚❚" forState:UIControlStateNormal]; }
 }
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
     if ([keyPath isEqualToString:@"status"] && self.player.status == AVPlayerStatusReadyToPlay) { [self.player play]; [self.playPauseButton setTitle:@"❚❚" forState:UIControlStateNormal]; }
-}
-- (void)searchBarSearchButtonClicked:(UISearchBar *)sb {
-    [sb resignFirstResponder];
-    NSString *q = [sb.text stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
-    NSURL *u = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@/search?q=%@", self.serverIP, q]];
-    [NSURLConnection sendAsynchronousRequest:[NSURLRequest requestWithURL:u] queue:[NSOperationQueue mainQueue] completionHandler:^(NSURLResponse *r, NSData *d, NSError *e) {
-        if (d) { self.searchResults = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil]; [self.tableView reloadData]; }
-    }];
-}
-- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { return (self.modeControl.selectedSegmentIndex == 0) ? self.searchResults.count : self.localTracks.count; }
-- (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
-    UITableViewCell *c = [tv dequeueReusableCellWithIdentifier:@"C"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"C"];
-    NSDictionary *t = (self.modeControl.selectedSegmentIndex == 0) ? self.searchResults[ip.row] : self.localTracks[ip.row];
-    c.textLabel.text = t[@"title"]; c.detailTextLabel.text = t[@"artist"];
-    c.backgroundColor = [UIColor clearColor]; c.textLabel.textColor = [UIColor whiteColor];
-    return c;
 }
 - (void)sliderTouchDown { self.isSeeking = YES; }
 - (void)sliderTouchUp { self.isSeeking = NO; [self.player seekToTime:CMTimeMakeWithSeconds(self.progressSlider.value, 1000)]; }
